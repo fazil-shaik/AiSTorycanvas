@@ -1,3 +1,6 @@
+/* Font imports for mood styling */
+@import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&family=Lora:ital,wght@0,400;0,700;1,400;1,700&family=Merriweather:ital,wght@0,400;0,700;1,400;1,700&family=Nunito:ital,wght@0,400;0,700;1,400;1,700&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Roboto+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -22,6 +25,114 @@
     background-color: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    transition: all 0.5s ease;
+  }
+  
+  /* Mood-specific styles */
+  .mood-container {
+    transition: background 0.5s ease, box-shadow 0.5s ease;
+  }
+  
+  .mood-text {
+    transition: font-family 0.5s ease, color 0.5s ease, text-shadow 0.5s ease;
+  }
+  
+  /* Bright mood */
+  .mood-bright-container {
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.1), rgba(255, 231, 180, 0.05));
+    box-shadow: 0 0 25px rgba(255, 210, 100, 0.2);
+  }
+  
+  .mood-bright-text {
+    font-family: 'Nunito', sans-serif;
+    color: #f5f5f5;
+    letter-spacing: 0.02em;
+  }
+  
+  /* Serene mood */
+  .mood-serene-container {
+    background: linear-gradient(to bottom, rgba(173, 216, 230, 0.05), rgba(135, 206, 235, 0.03));
+    box-shadow: 0 0 25px rgba(135, 206, 235, 0.15);
+  }
+  
+  .mood-serene-text {
+    font-family: 'Lora', serif;
+    color: #e0e8f0;
+    letter-spacing: 0.03em;
+  }
+  
+  /* Melancholic mood */
+  .mood-melancholic-container {
+    background: linear-gradient(to bottom, rgba(70, 70, 90, 0.1), rgba(50, 50, 70, 0.05));
+    box-shadow: 0 0 25px rgba(90, 90, 120, 0.15);
+  }
+  
+  .mood-melancholic-text {
+    font-family: 'Merriweather', serif;
+    color: #c5c8d0;
+    font-style: italic;
+    letter-spacing: 0.02em;
+  }
+  
+  /* Tense mood */
+  .mood-tense-container {
+    background: linear-gradient(to bottom, rgba(150, 20, 20, 0.05), rgba(80, 10, 10, 0.08));
+    box-shadow: 0 0 25px rgba(180, 30, 30, 0.15);
+  }
+  
+  .mood-tense-text {
+    font-family: 'Roboto Mono', monospace;
+    color: #f0d0d0;
+    letter-spacing: 0.05em;
+  }
+  
+  /* Mysterious mood */
+  .mood-mysterious-container {
+    background: linear-gradient(to bottom, rgba(75, 0, 130, 0.08), rgba(50, 0, 90, 0.05));
+    box-shadow: 0 0 25px rgba(128, 0, 128, 0.2);
+  }
+  
+  .mood-mysterious-text {
+    font-family: 'Playfair Display', serif;
+    color: #d8c8e8;
+    letter-spacing: 0.04em;
+  }
+  
+  /* Dramatic mood */
+  .mood-dramatic-container {
+    background: linear-gradient(to bottom, rgba(50, 50, 50, 0.1), rgba(20, 20, 20, 0.15));
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.3);
+  }
+  
+  .mood-dramatic-text {
+    font-family: 'Georgia', serif;
+    color: #ffffff;
+    letter-spacing: 0.04em;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.15);
+  }
+  
+  /* Romantic mood */
+  .mood-romantic-container {
+    background: linear-gradient(to bottom, rgba(219, 112, 147, 0.05), rgba(199, 102, 137, 0.03));
+    box-shadow: 0 0 25px rgba(219, 112, 147, 0.15);
+  }
+  
+  .mood-romantic-text {
+    font-family: 'Dancing Script', cursive;
+    color: #f0d8e0;
+    letter-spacing: 0.01em;
+  }
+  
+  /* Dark mood */
+  .mood-dark-container {
+    background: linear-gradient(to bottom, rgba(20, 20, 20, 0.2), rgba(10, 10, 10, 0.25));
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+  }
+  
+  .mood-dark-text {
+    font-family: 'Roboto Mono', monospace;
+    color: #a0a0a0;
+    letter-spacing: 0.05em;
   }
 
   .floating-button {

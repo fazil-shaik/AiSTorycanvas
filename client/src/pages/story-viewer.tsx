@@ -7,11 +7,13 @@ import { Button } from "@/components/ui/button";
 import { AudioPlayer } from "@/components/ui/audio-player";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
-import { ChevronLeft, Share2, Save, Volume2, Play, Pause, VolumeX, Copy, CheckCheck } from "lucide-react";
+import { ChevronLeft, Share2, Save, Volume2, Play, Pause, VolumeX, Copy, CheckCheck, PaintBucket } from "lucide-react";
 import { generateSpeech } from "@/lib/openai";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 import { ShareDialog } from "@/components/ui/share-dialog";
+import { MoodSlider, type MoodType, useMoodStyles } from "@/components/ui/mood-slider";
+import { cn } from "@/lib/utils";
 
 function StoryHeader({ title, genre }: { title: string; genre: string }) {
   return (
@@ -26,9 +28,9 @@ function StoryHeader({ title, genre }: { title: string; genre: string }) {
   );
 }
 
-function StoryContent({ content }: { content: string }) {
+function StoryContent({ content, moodClasses = "" }: { content: string; moodClasses?: string }) {
   return (
-    <div className="prose prose-lg prose-invert max-w-none mb-8">
+    <div className={cn("prose prose-lg prose-invert max-w-none mb-8", moodClasses)}>
       {content.split("\n\n").map((paragraph, index) => (
         <p key={index}>{paragraph}</p>
       ))}
@@ -63,8 +65,13 @@ export default function StoryViewer() {
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
   const [audioProgress, setAudioProgress] = useState(0);
   const [showCopiedMessage, setShowCopiedMessage] = useState(false);
+  const [currentMood, setCurrentMood] = useState<MoodType>("serene");
+  const [moodIntensity, setMoodIntensity] = useState(0.5);
+  const [showMoodPanel, setShowMoodPanel] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const { toast } = useToast();
+  
+  const { containerClasses, textClasses } = useMoodStyles(currentMood, moodIntensity);
   
   // Increment the view count when the story is viewed
   const incrementViewsMutation = useMutation({
@@ -186,6 +193,15 @@ export default function StoryViewer() {
     });
   };
   
+  const handleMoodChange = (mood: MoodType, intensity: number) => {
+    setCurrentMood(mood);
+    setMoodIntensity(intensity);
+  };
+  
+  const handleToggleMoodPanel = () => {
+    setShowMoodPanel(!showMoodPanel);
+  };
+  
   if (isLoading) {
     return (
       <div className="container max-w-4xl py-12 px-4">
@@ -268,6 +284,16 @@ export default function StoryViewer() {
                 )}
               </Button>
               
+              <Button
+                variant="outline"
+                size="sm"
+                className="bg-white/10 hover:bg-white/20"
+                onClick={handleToggleMoodPanel}
+              >
+                <PaintBucket className="mr-2 h-4 w-4" />
+                Mood
+              </Button>
+              
               <ShareDialog
                 title={story.title}
                 url={window.location.origin + "/story/" + story.id}
@@ -276,6 +302,22 @@ export default function StoryViewer() {
               />
             </div>
           </div>
+          
+          {/* Mood panel */}
+          {showMoodPanel && (
+            <Card className={cn("mb-8 overflow-hidden border-2", useMoodStyles(currentMood, moodIntensity).moodSetting.color)}>
+              <CardContent className="p-6">
+                <h3 className="text-lg font-medium mb-4">Story Mood Ambiance</h3>
+                <p className="text-sm text-muted-foreground mb-6">
+                  Adjust the mood slider to transform the visual theme and ambiance of the story.
+                </p>
+                <MoodSlider 
+                  onMoodChange={handleMoodChange} 
+                  className="mb-4"
+                />
+              </CardContent>
+            </Card>
+          )}
           
           {/* Audio player with ref */}
           {audioSrc && (
@@ -322,7 +364,9 @@ export default function StoryViewer() {
             </Card>
           )}
           
-          <StoryContent content={story.content} />
+          <div className={containerClasses}>
+            <StoryContent content={story.content} moodClasses={textClasses} />
+          </div>
         </div>
       </div>
       

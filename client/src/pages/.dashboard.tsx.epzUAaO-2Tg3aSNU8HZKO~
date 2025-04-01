@@ -399,7 +399,6 @@ export default function Dashboard() {
                   isPublic={story.isPublic}
                   handleEdit={() => navigate(`/edit-story/${story.id}`)}
                   handleDelete={() => handleDeleteStory(story.id)}
-                  toast={toast}
                 />
               ))}
             </div>

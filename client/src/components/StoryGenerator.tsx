@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -17,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { storySettingsSchema } from "@shared/schema";
-import { generateStory, generateSpeech } from "@/lib/openai";
+import { generateStory, generateSpeech, AuthRedirectError } from "@/lib/openai";
 import { useToast } from "@/hooks/use-toast";
 import { AudioPlayer } from "./ui/audio-player";
 import { Progress } from "@/components/ui/progress";
@@ -62,11 +63,28 @@ export default function StoryGenerator({ onComplete }: StoryGeneratorProps) {
       });
     },
     onError: (error) => {
-      toast({
-        title: "Error",
-        description: `Failed to generate story: ${error.message}`,
-        variant: "destructive",
-      });
+      // Handle authentication redirect errors from the mutation separately
+      if (error instanceof Error && 'redirectToAuth' in error) {
+        toast({
+          title: "Authentication Required",
+          description: "Please log in or register to generate stories.",
+          variant: "default",
+        });
+        // Redirect to auth page
+        navigate("/auth");
+      } else if (error instanceof Error && 'hoursRemaining' in error) {
+        toast({
+          title: "Rate Limit Exceeded",
+          description: error.message,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: `Failed to generate story: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          variant: "destructive",
+        });
+      }
     },
   });
   
@@ -95,10 +113,23 @@ export default function StoryGenerator({ onComplete }: StoryGeneratorProps) {
     },
   });
 
+  const [, navigate] = useLocation();
+
   const onSubmit = async (values) => {
     setIsGenerating(true);
     try {
       await generateMutation.mutateAsync(values);
+    } catch (error) {
+      // Check if this is an auth error that requires redirection
+      if (error instanceof Error && 'redirectToAuth' in error) {
+        toast({
+          title: "Authentication Required",
+          description: "Please log in or register to generate stories.",
+          variant: "default",
+        });
+        // Redirect to auth page
+        navigate("/auth");
+      }
     } finally {
       setIsGenerating(false);
     }

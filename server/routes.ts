@@ -334,9 +334,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Track user story generation requests
+  const userStoryRequests = new Map<number, { count: number, lastRequest: Date }>();
+  
   // OpenAI story generation endpoint
   app.post("/api/generate-story", async (req: Request, res: Response) => {
     try {
+      // Check if user is authenticated
+      const userId = req.user?.id;
+      
+      // For unauthenticated users, return a 401 status to redirect them to register
+      if (!userId) {
+        return res.status(401).json({
+          message: "Authentication required to generate stories",
+          redirectToAuth: true
+        });
+      }
+      
+      // Rate limiting for authenticated users
+      const userRequest = userStoryRequests.get(userId);
+      const now = new Date();
+      
+      if (userRequest) {
+        // Reset count if last request was more than 24 hours ago
+        const hoursSinceLastRequest = (now.getTime() - userRequest.lastRequest.getTime()) / (1000 * 60 * 60);
+        
+        if (hoursSinceLastRequest < 24 && userRequest.count >= 1) {
+          return res.status(429).json({ 
+            message: "Rate limit exceeded. You can only generate one story per day.",
+            hoursRemaining: Math.ceil(24 - hoursSinceLastRequest)
+          });
+        }
+        
+        if (hoursSinceLastRequest >= 24) {
+          userStoryRequests.set(userId, { count: 1, lastRequest: now });
+        } else {
+          userStoryRequests.set(userId, { 
+            count: userRequest.count + 1, 
+            lastRequest: now 
+          });
+        }
+      } else {
+        userStoryRequests.set(userId, { count: 1, lastRequest: now });
+      }
+      
       const storySettings = storySettingsSchema.parse(req.body);
       
       // Construct prompt for OpenAI

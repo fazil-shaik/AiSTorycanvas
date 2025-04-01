@@ -1,5 +1,6 @@
 import { apiRequest } from "./queryClient";
 import { StorySettings } from "@shared/schema";
+import { useLocation } from "wouter";
 
 export interface GeneratedStory {
   title: string;
@@ -8,9 +9,38 @@ export interface GeneratedStory {
   imagePrompts: string[];
 }
 
+export interface AuthRedirectError extends Error {
+  redirectToAuth: boolean;
+  hoursRemaining?: number;
+}
+
 export async function generateStory(settings: StorySettings): Promise<GeneratedStory> {
-  const response = await apiRequest('POST', '/api/generate-story', settings);
-  return await response.json();
+  try {
+    const response = await apiRequest('POST', '/api/generate-story', settings);
+    return await response.json();
+  } catch (error) {
+    // Check if this is an authentication error or rate limit error
+    if (error instanceof Error) {
+      try {
+        const errorResponse = JSON.parse(error.message.split(': ')[1]);
+        if (errorResponse.redirectToAuth) {
+          // This error will be caught by the component to redirect to auth
+          const authError = new Error("Authentication required to generate stories") as AuthRedirectError;
+          authError.redirectToAuth = true;
+          throw authError;
+        }
+        
+        if (errorResponse.hoursRemaining) {
+          const rateError = new Error(`Rate limit exceeded. You can generate another story in ${errorResponse.hoursRemaining} hours.`) as AuthRedirectError;
+          rateError.hoursRemaining = errorResponse.hoursRemaining;
+          throw rateError;
+        }
+      } catch (parseError) {
+        // If we can't parse the error, just pass through the original error
+      }
+    }
+    throw error;
+  }
 }
 
 export async function generateSpeech(text: string): Promise<string> {

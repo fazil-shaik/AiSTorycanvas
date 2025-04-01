@@ -8,6 +8,7 @@ import StoryViewer from "@/pages/story-viewer";
 import Library from "@/pages/library";
 import Explore from "@/pages/explore";
 import About from "@/pages/about";
+import Dashboard from "@/pages/dashboard";
 import Background from "./components/Background";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
@@ -21,6 +22,7 @@ function Router() {
       <Route path="/library" component={Library} />
       <Route path="/explore" component={Explore} />
       <Route path="/about" component={About} />
+      <Route path="/dashboard" component={Dashboard} />
       <Route component={NotFound} />
     </Switch>
   );

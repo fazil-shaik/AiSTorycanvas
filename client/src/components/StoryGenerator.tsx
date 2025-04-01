@@ -21,8 +21,13 @@ import { generateStory, generateSpeech } from "@/lib/openai";
 import { useToast } from "@/hooks/use-toast";
 import { AudioPlayer } from "./ui/audio-player";
 import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
 
-export default function StoryGenerator() {
+interface StoryGeneratorProps {
+  onComplete?: () => void;
+}
+
+export default function StoryGenerator({ onComplete }: StoryGeneratorProps) {
   const [story, setStory] = useState<{
     title: string;
     content: string;
@@ -34,6 +39,8 @@ export default function StoryGenerator() {
   const [audioSrc, setAudioSrc] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isPublic, setIsPublic] = useState(false);
   const { toast } = useToast();
 
   const { data: genres } = useQuery({ 
@@ -363,13 +370,95 @@ export default function StoryGenerator() {
                   
                   {story && (
                     <div className="flex justify-between items-center mt-4">
-                      <Button 
-                        variant="ghost"
-                        className="bg-white/10 hover:bg-white/20 text-white"
-                      >
-                        <Save className="h-4 w-4 mr-2" />
-                        Save
-                      </Button>
+                      <div className="flex items-center space-x-4">
+                        <Button 
+                          variant="ghost"
+                          className="bg-white/10 hover:bg-white/20 text-white"
+                          onClick={() => {
+                            if (!story) return;
+                            
+                            setIsSaving(true);
+                            
+                            // Get the current form values for creating the story
+                            const settings = form.getValues();
+                            
+                            apiRequest("POST", "/api/stories", {
+                              title: story.title,
+                              summary: story.summary,
+                              content: story.content,
+                              genre: settings.genre,
+                              theme: settings.theme,
+                              character: settings.character,
+                              setting: settings.setting,
+                              storyLength: settings.storyLength,
+                              isPublic: isPublic,
+                              images: story.imagePrompts,
+                            })
+                            .then(async (res) => {
+                              if (!res.ok) {
+                                throw new Error("Failed to save story");
+                              }
+                              
+                              const savedStory = await res.json();
+                              
+                              toast({
+                                title: "Story Saved",
+                                description: `"${savedStory.title}" has been saved to your library.`,
+                              });
+                              
+                              // Update the cache to reflect the new story
+                              queryClient.invalidateQueries({ queryKey: ["user-stories"] });
+                              
+                              // Call the onComplete callback if provided
+                              if (onComplete) {
+                                onComplete();
+                              }
+                            })
+                            .catch((error) => {
+                              toast({
+                                variant: "destructive",
+                                title: "Save Failed",
+                                description: error instanceof Error 
+                                  ? error.message 
+                                  : "Something went wrong while saving your story.",
+                              });
+                            })
+                            .finally(() => {
+                              setIsSaving(false);
+                            });
+                          }}
+                          disabled={isSaving}
+                        >
+                          {isSaving ? (
+                            <>
+                              <svg className="animate-spin mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                              Saving...
+                            </>
+                          ) : (
+                            <>
+                              <Save className="h-4 w-4 mr-2" />
+                              Save
+                            </>
+                          )}
+                        </Button>
+                        
+                        <div className="flex items-center space-x-2">
+                          <Switch
+                            id="public-mode"
+                            checked={isPublic}
+                            onCheckedChange={setIsPublic}
+                          />
+                          <label
+                            htmlFor="public-mode"
+                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-white"
+                          >
+                            {isPublic ? "Public" : "Private"}
+                          </label>
+                        </div>
+                      </div>
                       
                       <div className="flex space-x-3">
                         <Button 

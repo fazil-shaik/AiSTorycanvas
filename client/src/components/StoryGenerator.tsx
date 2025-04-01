@@ -17,8 +17,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { storySettingsSchema } from "@shared/schema";
-import { generateStory, generateSpeech, AuthRedirectError } from "@/lib/openai";
+import { storySettingsSchema, type StorySettings } from "@shared/schema";
+import { generateStory, generateSpeech, RateLimitError } from "@/lib/openai";
 import { useToast } from "@/hooks/use-toast";
 import { AudioPlayer } from "./ui/audio-player";
 import { Progress } from "@/components/ui/progress";
@@ -63,16 +63,7 @@ export default function StoryGenerator({ onComplete }: StoryGeneratorProps) {
       });
     },
     onError: (error) => {
-      // Handle authentication redirect errors from the mutation separately
-      if (error instanceof Error && 'redirectToAuth' in error) {
-        toast({
-          title: "Authentication Required",
-          description: "Please log in or register to generate stories.",
-          variant: "default",
-        });
-        // Redirect to auth page
-        navigate("/auth");
-      } else if (error instanceof Error && 'hoursRemaining' in error) {
+      if (error instanceof Error && 'hoursRemaining' in error) {
         toast({
           title: "Rate Limit Exceeded",
           description: error.message,
@@ -115,21 +106,17 @@ export default function StoryGenerator({ onComplete }: StoryGeneratorProps) {
 
   const [, navigate] = useLocation();
 
-  const onSubmit = async (values) => {
+  const onSubmit = async (values: StorySettings) => {
     setIsGenerating(true);
     try {
       await generateMutation.mutateAsync(values);
     } catch (error) {
-      // Check if this is an auth error that requires redirection
-      if (error instanceof Error && 'redirectToAuth' in error) {
-        toast({
-          title: "Authentication Required",
-          description: "Please log in or register to generate stories.",
-          variant: "default",
-        });
-        // Redirect to auth page
-        navigate("/auth");
-      }
+      console.error('Story generation error:', error);
+      toast({
+        title: "Story Generation Failed",
+        description: error instanceof Error ? error.message : "Failed to generate story. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsGenerating(false);
     }

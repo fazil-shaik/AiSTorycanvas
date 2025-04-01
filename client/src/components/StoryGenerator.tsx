@@ -23,6 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 import { AudioPlayer } from "./ui/audio-player";
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
+import { ShareDialog } from "./ui/share-dialog";
 
 interface StoryGeneratorProps {
   onComplete?: () => void;
@@ -509,13 +510,12 @@ export default function StoryGenerator({ onComplete }: StoryGeneratorProps) {
                         </Button>
                       </div>
                       
-                      <Button 
-                        variant="ghost"
-                        className="bg-white/10 hover:bg-white/20 text-white"
-                      >
-                        <Share2 className="h-4 w-4 mr-2" />
-                        Share
-                      </Button>
+                      <ShareDialog
+                        title={story.title}
+                        url={window.location.origin + "/story/" + story.title.toLowerCase().replace(/\s+/g, '-')}
+                        summary={story.summary}
+                        isPublic={isPublic}
+                      />
                     </div>
                   )}
                   

@@ -2,9 +2,10 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Star } from "lucide-react";
+import { Star, Share2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "framer-motion";
+import { ShareDialog } from "./ui/share-dialog";
 
 interface StoryCardProps {
   id: number;
@@ -35,6 +36,8 @@ function StoryCard({ id, title, summary, genre, username, rating, readingTime }:
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
+  
+  const [showShareDialog, setShowShareDialog] = useState(false);
   
   return (
     <motion.div 
@@ -69,26 +72,34 @@ function StoryCard({ id, title, summary, genre, username, rating, readingTime }:
           </div>
         </div>
         
-        <div className="mt-4 flex justify-between">
+        <div className="mt-4 flex justify-between items-center">
           <span className="text-white/50 text-xs">{readingTime}</span>
-          <Link href={`/story/${id}`}>
-            <a className="text-secondary hover:text-white transition-colors text-sm">
-              Read Now 
-              <svg 
-                className="inline-block ml-1 h-3 w-3" 
-                xmlns="http://www.w3.org/2000/svg" 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                stroke="currentColor" 
-                strokeWidth="2" 
-                strokeLinecap="round" 
-                strokeLinejoin="round"
-              >
-                <path d="M5 12h14" />
-                <path d="m12 5 7 7-7 7" />
-              </svg>
-            </a>
-          </Link>
+          <div className="flex space-x-2">
+            <ShareDialog
+              title={title}
+              url={window.location.origin + "/story/" + id}
+              summary={summary}
+              isPublic={true}
+            />
+            <Link href={`/story/${id}`}>
+              <a className="text-secondary hover:text-white transition-colors text-sm">
+                Read Now 
+                <svg 
+                  className="inline-block ml-1 h-3 w-3" 
+                  xmlns="http://www.w3.org/2000/svg" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                >
+                  <path d="M5 12h14" />
+                  <path d="m12 5 7 7-7 7" />
+                </svg>
+              </a>
+            </Link>
+          </div>
         </div>
       </div>
     </motion.div>

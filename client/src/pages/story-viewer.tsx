@@ -11,6 +11,7 @@ import { ChevronLeft, Share2, Save, Volume2, Play, Pause, VolumeX, Copy, CheckCh
 import { generateSpeech } from "@/lib/openai";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
+import { ShareDialog } from "@/components/ui/share-dialog";
 
 function StoryHeader({ title, genre }: { title: string; genre: string }) {
   return (
@@ -267,24 +268,12 @@ export default function StoryViewer() {
                 )}
               </Button>
               
-              <Button 
-                variant="outline" 
-                size="sm"
-                className="bg-white/10 hover:bg-white/20"
-                onClick={handleCopyLink}
-              >
-                {showCopiedMessage ? (
-                  <>
-                    <CheckCheck className="mr-2 h-4 w-4" />
-                    Copied!
-                  </>
-                ) : (
-                  <>
-                    <Copy className="mr-2 h-4 w-4" />
-                    Copy Link
-                  </>
-                )}
-              </Button>
+              <ShareDialog
+                title={story.title}
+                url={window.location.origin + "/story/" + story.id}
+                summary={story.summary}
+                isPublic={story.isPublic}
+              />
             </div>
           </div>
           

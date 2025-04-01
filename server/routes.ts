@@ -1,7 +1,16 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertStorySchema, insertUserSchema, storySettingsSchema, loginSchema, updateThemeSchema } from "@shared/schema";
+import { 
+  insertStorySchema, 
+  insertUserSchema, 
+  storySettingsSchema, 
+  loginSchema, 
+  updateThemeSchema,
+  insertSubscriptionPlanSchema,
+  insertSubscriptionSchema,
+  insertPaymentSchema
+} from "@shared/schema";
 import OpenAI from "openai";
 import { z } from "zod";
 import { hashPassword, comparePassword, generateToken, createSession, deleteSession, authMiddleware } from "./utils/auth";
@@ -395,6 +404,297 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error generating speech:", error);
       return res.status(500).json({ message: "Error generating speech" });
+    }
+  });
+  
+  // Subscription plan routes
+  app.get("/api/subscription-plans", async (_req: Request, res: Response) => {
+    try {
+      const plans = await storage.getAllSubscriptionPlans();
+      return res.json(plans);
+    } catch (error) {
+      console.error("Error fetching subscription plans:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  app.get("/api/subscription-plans/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const plan = await storage.getSubscriptionPlan(id);
+      
+      if (!plan) {
+        return res.status(404).json({ message: "Subscription plan not found" });
+      }
+      
+      return res.json(plan);
+    } catch (error) {
+      console.error("Error fetching subscription plan:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  app.post("/api/subscription-plans", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      // Only admin users can create subscription plans
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Insufficient permissions" });
+      }
+      
+      const planData = insertSubscriptionPlanSchema.parse(req.body);
+      const plan = await storage.createSubscriptionPlan(planData);
+      
+      return res.status(201).json(plan);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          message: "Invalid subscription plan data",
+          errors: error.errors,
+        });
+      }
+      console.error("Error creating subscription plan:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  app.put("/api/subscription-plans/:id", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      // Only admin users can update subscription plans
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Insufficient permissions" });
+      }
+      
+      const id = parseInt(req.params.id);
+      const planData = insertSubscriptionPlanSchema.partial().parse(req.body);
+      
+      const updatedPlan = await storage.updateSubscriptionPlan(id, planData);
+      
+      if (!updatedPlan) {
+        return res.status(404).json({ message: "Subscription plan not found" });
+      }
+      
+      return res.json(updatedPlan);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          message: "Invalid subscription plan data",
+          errors: error.errors,
+        });
+      }
+      console.error("Error updating subscription plan:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  app.delete("/api/subscription-plans/:id", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      // Only admin users can delete subscription plans
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Insufficient permissions" });
+      }
+      
+      const id = parseInt(req.params.id);
+      const success = await storage.deleteSubscriptionPlan(id);
+      
+      if (!success) {
+        return res.status(404).json({ message: "Subscription plan not found" });
+      }
+      
+      return res.status(204).end();
+    } catch (error) {
+      console.error("Error deleting subscription plan:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  // User subscriptions routes
+  app.get("/api/user/subscription", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      const subscription = await storage.getActiveUserSubscription(userId);
+      
+      if (!subscription) {
+        return res.status(404).json({ message: "No active subscription found" });
+      }
+      
+      return res.json(subscription);
+    } catch (error) {
+      console.error("Error fetching user subscription:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  app.post("/api/user/subscription", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      // Build subscription data
+      const { planId, paymentMethod, paymentAmount } = req.body;
+      
+      if (!planId || !paymentMethod || !paymentAmount) {
+        return res.status(400).json({ message: "Missing required fields: planId, paymentMethod, paymentAmount" });
+      }
+      
+      // Get the plan to determine duration
+      const plan = await storage.getSubscriptionPlan(planId);
+      if (!plan) {
+        return res.status(404).json({ message: "Subscription plan not found" });
+      }
+      
+      // Calculate start and end dates
+      const startDate = new Date();
+      const endDate = new Date(startDate);
+      
+      if (plan.billingCycle === "monthly") {
+        endDate.setMonth(endDate.getMonth() + 1);
+      } else if (plan.billingCycle === "yearly") {
+        endDate.setFullYear(endDate.getFullYear() + 1);
+      } else {
+        // Default to 30 days
+        endDate.setDate(endDate.getDate() + 30);
+      }
+      
+      // Create subscription
+      const subscriptionData = {
+        userId: userId,
+        planId: planId,
+        status: "active",
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0],
+        autoRenew: true
+      };
+      
+      const subscription = await storage.createSubscription(subscriptionData);
+      
+      // Create payment record
+      const paymentData = {
+        userId: userId,
+        subscriptionId: subscription.id,
+        amount: paymentAmount.toString(),
+        currency: "USD",
+        status: "succeeded",
+        paymentMethod: paymentMethod,
+        transactionId: `txn_${Date.now()}`
+      };
+      
+      await storage.createPayment(paymentData);
+      
+      // Update user's premium status
+      await storage.updateUser(userId, { isPremium: true });
+      
+      return res.status(201).json(subscription);
+    } catch (error) {
+      console.error("Error creating subscription:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  app.put("/api/user/subscription/:id", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      const id = parseInt(req.params.id);
+      
+      // Verify the subscription belongs to the user
+      const existingSubscription = await storage.getUserSubscription(userId);
+      if (!existingSubscription || existingSubscription.id !== id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const { autoRenew } = req.body;
+      
+      if (autoRenew === undefined) {
+        return res.status(400).json({ message: "Missing autoRenew field" });
+      }
+      
+      const updatedSubscription = await storage.updateSubscription(id, { autoRenew });
+      
+      if (!updatedSubscription) {
+        return res.status(404).json({ message: "Subscription not found" });
+      }
+      
+      return res.json(updatedSubscription);
+    } catch (error) {
+      console.error("Error updating subscription:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  app.post("/api/user/subscription/:id/cancel", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      const id = parseInt(req.params.id);
+      
+      // Verify the subscription belongs to the user
+      const existingSubscription = await storage.getUserSubscription(userId);
+      if (!existingSubscription || existingSubscription.id !== id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const canceledSubscription = await storage.cancelSubscription(id);
+      
+      if (!canceledSubscription) {
+        return res.status(404).json({ message: "Subscription not found" });
+      }
+      
+      return res.json(canceledSubscription);
+    } catch (error) {
+      console.error("Error canceling subscription:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  // Premium content routes
+  app.get("/api/premium-stories", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      // Check if user has active premium subscription
+      const user = await storage.getUser(userId);
+      if (!user?.isPremium) {
+        return res.status(403).json({ message: "Premium subscription required" });
+      }
+      
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+      const premiumStories = await storage.getPremiumStories(limit);
+      
+      return res.json(premiumStories);
+    } catch (error) {
+      console.error("Error fetching premium stories:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  // Payment history route
+  app.get("/api/user/payments", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      const payments = await storage.getPaymentsByUser(userId);
+      return res.json(payments);
+    } catch (error) {
+      console.error("Error fetching payment history:", error);
+      return res.status(500).json({ message: "Internal server error" });
     }
   });
 

@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { PlusCircle, Library, Clock, Star, Sparkles, BookOpen } from "lucide-react";
+import { PlusCircle, Library, Clock, Star, Sparkles, BookOpen, CreditCard, CheckCircle, XCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import StoryGenerator from "@/components/StoryGenerator";
 
@@ -154,6 +154,380 @@ function StoryCard({
   );
 }
 
+// Subscription Status Component
+interface SubscriptionStatusProps {
+  userId: number;
+  isPremium: boolean;
+}
+
+function SubscriptionStatus({ userId, isPremium }: SubscriptionStatusProps) {
+  const [showSubscriptionDialog, setShowSubscriptionDialog] = useState(false);
+  const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
+  const { toast } = useToast();
+  
+  // Fetch current subscription
+  const { data: subscription, isLoading: isLoadingSubscription } = useQuery({
+    queryKey: ["user-subscription"],
+    queryFn: async () => {
+      try {
+        const res = await apiRequest("GET", "/api/user/subscription");
+        if (!res.ok) return null;
+        return res.json();
+      } catch (error) {
+        return null;
+      }
+    },
+  });
+  
+  // Fetch subscription plans
+  const { data: plans, isLoading: isLoadingPlans } = useQuery({
+    queryKey: ["subscription-plans"],
+    queryFn: async () => {
+      try {
+        const res = await apiRequest("GET", "/api/subscription-plans");
+        if (!res.ok) return [];
+        return res.json();
+      } catch (error) {
+        return [];
+      }
+    },
+  });
+  
+  // Fetch payment history
+  const { data: payments, isLoading: isLoadingPayments } = useQuery({
+    queryKey: ["payment-history"],
+    queryFn: async () => {
+      try {
+        const res = await apiRequest("GET", "/api/user/payments");
+        if (!res.ok) return [];
+        return res.json();
+      } catch (error) {
+        return [];
+      }
+    },
+    enabled: isPremium,
+  });
+  
+  // Toggle auto-renewal mutation
+  const toggleAutoRenewalMutation = useMutation({
+    mutationFn: async (subscriptionId: number) => {
+      const currentAutoRenew = subscription?.autoRenew;
+      const res = await apiRequest("PUT", `/api/user/subscription/${subscriptionId}`, {
+        autoRenew: !currentAutoRenew
+      });
+      if (!res.ok) {
+        throw new Error("Failed to update subscription");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["user-subscription"] });
+      toast({
+        title: "Auto-renewal updated",
+        description: subscription?.autoRenew 
+          ? "Auto-renewal has been turned off" 
+          : "Auto-renewal has been turned on",
+      });
+    },
+    onError: () => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to update subscription settings",
+      });
+    }
+  });
+  
+  // Cancel subscription mutation
+  const cancelSubscriptionMutation = useMutation({
+    mutationFn: async (subscriptionId: number) => {
+      const res = await apiRequest("POST", `/api/user/subscription/${subscriptionId}/cancel`);
+      if (!res.ok) {
+        throw new Error("Failed to cancel subscription");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["user-subscription"] });
+      queryClient.invalidateQueries({ queryKey: ["user"] });
+      toast({
+        title: "Subscription canceled",
+        description: "Your subscription has been successfully canceled",
+      });
+    },
+    onError: () => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to cancel subscription",
+      });
+    }
+  });
+  
+  // Subscribe to plan mutation
+  const subscribeMutation = useMutation({
+    mutationFn: async ({ planId, paymentMethod, amount }: { planId: number, paymentMethod: string, amount: number }) => {
+      const res = await apiRequest("POST", "/api/user/subscription", {
+        planId,
+        paymentMethod,
+        paymentAmount: amount
+      });
+      if (!res.ok) {
+        throw new Error("Failed to process subscription");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      setShowSubscriptionDialog(false);
+      queryClient.invalidateQueries({ queryKey: ["user-subscription"] });
+      queryClient.invalidateQueries({ queryKey: ["user"] });
+      toast({
+        title: "Subscription activated",
+        description: "Your subscription has been successfully activated",
+      });
+    },
+    onError: () => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to process subscription",
+      });
+    }
+  });
+  
+  const handleSubscribe = (planId: number) => {
+    setSelectedPlanId(planId);
+    setShowSubscriptionDialog(true);
+  };
+  
+  const confirmSubscription = () => {
+    if (!selectedPlanId) return;
+    
+    const plan = plans?.find(p => p.id === selectedPlanId);
+    if (!plan) return;
+    
+    subscribeMutation.mutate({
+      planId: selectedPlanId,
+      paymentMethod: "credit_card",
+      amount: parseFloat(plan.price)
+    });
+  };
+  
+  if (isLoadingPlans || (isPremium && isLoadingSubscription)) {
+    return (
+      <div className="animate-pulse">
+        <div className="h-40 bg-muted/20 rounded-lg"></div>
+      </div>
+    );
+  }
+  
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+  
+  const getSubscriptionStatus = () => {
+    if (!isPremium) return "Free";
+    if (!subscription) return "Unknown";
+    
+    const endDate = new Date(subscription.endDate);
+    const today = new Date();
+    
+    if (subscription.status === "cancelled") return "Cancelled";
+    if (endDate < today) return "Expired";
+    return "Active";
+  };
+  
+  return (
+    <div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Current Subscription */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span>Current Subscription</span>
+              <Badge variant={isPremium ? "default" : "outline"}>
+                {getSubscriptionStatus()}
+              </Badge>
+            </CardTitle>
+            <CardDescription>
+              {isPremium 
+                ? "You have access to premium features and content"
+                : "Upgrade to access premium features and content"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isPremium && subscription ? (
+              <div className="space-y-4">
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Plan:</span>
+                  <span className="font-medium">
+                    {plans?.find(p => p.id === subscription.planId)?.name || "Premium"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Start Date:</span>
+                  <span>{formatDate(subscription.startDate)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">End Date:</span>
+                  <span>{formatDate(subscription.endDate)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Auto-renewal:</span>
+                  <span>{subscription.autoRenew ? "Enabled" : "Disabled"}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-4 text-muted-foreground">
+                You are currently on the free plan with limited features
+              </div>
+            )}
+          </CardContent>
+          <CardFooter className="flex-col space-y-2">
+            {isPremium && subscription ? (
+              <>
+                <Button 
+                  variant="outline" 
+                  className="w-full" 
+                  onClick={() => toggleAutoRenewalMutation.mutate(subscription.id)}
+                  disabled={toggleAutoRenewalMutation.isPending}
+                >
+                  {toggleAutoRenewalMutation.isPending ? (
+                    "Processing..."
+                  ) : (
+                    subscription.autoRenew ? "Disable Auto-renewal" : "Enable Auto-renewal"
+                  )}
+                </Button>
+                <Button 
+                  variant="destructive" 
+                  className="w-full" 
+                  onClick={() => cancelSubscriptionMutation.mutate(subscription.id)}
+                  disabled={cancelSubscriptionMutation.isPending}
+                >
+                  {cancelSubscriptionMutation.isPending ? "Processing..." : "Cancel Subscription"}
+                </Button>
+              </>
+            ) : (
+              <Button 
+                className="w-full bg-gradient-to-r from-primary to-secondary text-white"
+                onClick={() => setShowSubscriptionDialog(true)}
+              >
+                Upgrade Now
+              </Button>
+            )}
+          </CardFooter>
+        </Card>
+        
+        {/* Available Plans or Payment History */}
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              {isPremium ? "Payment History" : "Available Plans"}
+            </CardTitle>
+            <CardDescription>
+              {isPremium 
+                ? "Your recent payment transactions"
+                : "Choose a subscription plan that works for you"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isPremium ? (
+              isLoadingPayments ? (
+                <div className="space-y-2 animate-pulse">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="h-8 bg-muted/20 rounded-md"></div>
+                  ))}
+                </div>
+              ) : payments && payments.length > 0 ? (
+                <div className="space-y-4">
+                  {payments.slice(0, 5).map((payment: any) => (
+                    <div key={payment.id} className="flex justify-between items-center">
+                      <div>
+                        <div className="font-medium">{payment.paymentMethod}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {new Date(payment.createdAt).toLocaleDateString()}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-medium">${payment.amount}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {payment.status}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  No payment records found
+                </div>
+              )
+            ) : (
+              <div className="space-y-4">
+                {plans?.map((plan: any) => (
+                  <div key={plan.id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div>
+                      <h3 className="font-medium">{plan.name}</h3>
+                      <p className="text-sm text-muted-foreground">{plan.description}</p>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold text-lg">${plan.price}</div>
+                      <Button 
+                        size="sm" 
+                        onClick={() => handleSubscribe(plan.id)}
+                        disabled={plan.name === "Free"}
+                      >
+                        {plan.name === "Free" ? "Current" : "Subscribe"}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+      
+      {/* Subscription Dialog */}
+      <Dialog open={showSubscriptionDialog} onOpenChange={setShowSubscriptionDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Subscription</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p>
+              You are subscribing to the {plans?.find(p => p.id === selectedPlanId)?.name} plan.
+            </p>
+            <p className="font-medium">
+              Price: ${plans?.find(p => p.id === selectedPlanId)?.price}/
+              {plans?.find(p => p.id === selectedPlanId)?.billingCycle}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Your payment method will be charged immediately and your subscription will be activated.
+            </p>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button variant="outline" onClick={() => setShowSubscriptionDialog(false)}>
+                Cancel
+              </Button>
+              <Button 
+                onClick={confirmSubscription}
+                disabled={subscribeMutation.isPending}
+                className="bg-gradient-to-r from-primary to-secondary text-white"
+              >
+                {subscribeMutation.isPending ? "Processing..." : "Confirm & Pay"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 // Dashboard Component
 export default function Dashboard() {
   const [location, navigate] = useLocation();
@@ -296,6 +670,12 @@ export default function Dashboard() {
         </Dialog>
       </div>
       
+      {/* Subscription Status */}
+      <div className="mb-12">
+        <h2 className="text-2xl font-bold mb-4">Subscription</h2>
+        <SubscriptionStatus userId={user.id} isPremium={user.isPremium} />
+      </div>
+
       <Tabs defaultValue="all" className="w-full">
         <TabsList className="mb-8">
           <TabsTrigger value="all" className="flex items-center">

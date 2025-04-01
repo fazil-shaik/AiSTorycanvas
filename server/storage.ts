@@ -3,10 +3,13 @@ import {
   stories, type Story, type InsertStory,
   genres, type Genre,
   themes, type Theme,
-  sessions, type Session, type InsertSession
+  sessions, type Session, type InsertSession,
+  subscriptionPlans, type SubscriptionPlan, type InsertSubscriptionPlan,
+  subscriptions, type Subscription, type InsertSubscription,
+  payments, type Payment, type InsertPayment
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, gte, lt } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -18,6 +21,7 @@ export interface IStorage {
   getStory(id: number): Promise<Story | undefined>;
   getStoriesByUser(userId: number): Promise<Story[]>;
   getPublicStories(limit?: number): Promise<Story[]>;
+  getPremiumStories(limit?: number): Promise<Story[]>;
   getStoriesByGenre(genre: string, limit?: number): Promise<Story[]>;
   createStory(story: InsertStory): Promise<Story>;
   updateStory(id: number, story: Partial<InsertStory>): Promise<Story | undefined>;
@@ -26,6 +30,25 @@ export interface IStorage {
   
   getAllGenres(): Promise<Genre[]>;
   getAllThemes(): Promise<Theme[]>;
+  
+  // Subscription plan methods
+  getAllSubscriptionPlans(): Promise<SubscriptionPlan[]>;
+  getSubscriptionPlan(id: number): Promise<SubscriptionPlan | undefined>;
+  createSubscriptionPlan(plan: InsertSubscriptionPlan): Promise<SubscriptionPlan>;
+  updateSubscriptionPlan(id: number, plan: Partial<InsertSubscriptionPlan>): Promise<SubscriptionPlan | undefined>;
+  deleteSubscriptionPlan(id: number): Promise<boolean>;
+  
+  // User subscription methods
+  getUserSubscription(userId: number): Promise<Subscription | undefined>;
+  getActiveUserSubscription(userId: number): Promise<Subscription | undefined>;
+  createSubscription(subscription: InsertSubscription): Promise<Subscription>;
+  updateSubscription(id: number, subscription: Partial<InsertSubscription>): Promise<Subscription | undefined>;
+  cancelSubscription(id: number): Promise<Subscription | undefined>;
+  
+  // Payment methods
+  createPayment(payment: InsertPayment): Promise<Payment>;
+  getPaymentsByUser(userId: number): Promise<Payment[]>;
+  getPaymentsBySubscription(subscriptionId: number): Promise<Payment[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -33,18 +56,30 @@ export class MemStorage implements IStorage {
   private stories: Map<number, Story>;
   private genresList: Genre[];
   private themesList: Theme[];
+  private subscriptionPlansList: Map<number, SubscriptionPlan>;
+  private subscriptionsList: Map<number, Subscription>;
+  private paymentsList: Map<number, Payment>;
   private userIdCounter: number;
   private storyIdCounter: number;
   private genreIdCounter: number;
   private themeIdCounter: number;
+  private planIdCounter: number;
+  private subscriptionIdCounter: number;
+  private paymentIdCounter: number;
 
   constructor() {
     this.users = new Map();
     this.stories = new Map();
+    this.subscriptionPlansList = new Map();
+    this.subscriptionsList = new Map();
+    this.paymentsList = new Map();
     this.userIdCounter = 1;
     this.storyIdCounter = 1;
     this.genreIdCounter = 1;
     this.themeIdCounter = 1;
+    this.planIdCounter = 1;
+    this.subscriptionIdCounter = 1;
+    this.paymentIdCounter = 1;
     
     // Initial genres
     this.genresList = [
@@ -64,6 +99,48 @@ export class MemStorage implements IStorage {
       { id: this.themeIdCounter++, name: "Discovery" },
       { id: this.themeIdCounter++, name: "Survival" }
     ];
+    
+    // Initial subscription plans
+    const now = new Date();
+    const freePlan = {
+      id: this.planIdCounter++,
+      name: "Free",
+      description: "Basic access to story generation with limited features",
+      price: "0",
+      billingCycle: "monthly",
+      features: ["5 stories per month", "Basic AI generation", "Standard quality"],
+      isActive: true,
+      createdAt: now,
+      updatedAt: now
+    };
+    
+    const basicPlan = {
+      id: this.planIdCounter++,
+      name: "Basic",
+      description: "Enhanced access with more generation options",
+      price: "9.99",
+      billingCycle: "monthly",
+      features: ["15 stories per month", "Advanced AI generation", "High quality", "Audio narration"],
+      isActive: true,
+      createdAt: now,
+      updatedAt: now
+    };
+    
+    const premiumPlan = {
+      id: this.planIdCounter++,
+      name: "Premium",
+      description: "Full access to all features and exclusive content",
+      price: "19.99",
+      billingCycle: "monthly",
+      features: ["Unlimited stories", "Advanced AI generation", "Highest quality", "Audio narration", "Access to premium stories", "Priority support"],
+      isActive: true,
+      createdAt: now,
+      updatedAt: now
+    };
+    
+    this.subscriptionPlansList.set(freePlan.id, freePlan);
+    this.subscriptionPlansList.set(basicPlan.id, basicPlan);
+    this.subscriptionPlansList.set(premiumPlan.id, premiumPlan);
   }
 
   async getUser(id: number): Promise<User | undefined> {
@@ -92,6 +169,7 @@ export class MemStorage implements IStorage {
       avatar: null,
       bio: null,
       role: "user",
+      isPremium: false,
       createdAt: now,
       updatedAt: now
     };
@@ -124,14 +202,21 @@ export class MemStorage implements IStorage {
   async getPublicStories(limit: number = 10): Promise<Story[]> {
     return Array.from(this.stories.values())
       .filter(story => story.isPublic)
-      .sort((a, b) => b.views - a.views)
+      .sort((a, b) => (b.views || 0) - (a.views || 0))
+      .slice(0, limit);
+  }
+  
+  async getPremiumStories(limit: number = 10): Promise<Story[]> {
+    return Array.from(this.stories.values())
+      .filter(story => story.isPublic && story.isPremium)
+      .sort((a, b) => (b.views || 0) - (a.views || 0))
       .slice(0, limit);
   }
   
   async getStoriesByGenre(genre: string, limit: number = 10): Promise<Story[]> {
     return Array.from(this.stories.values())
       .filter(story => story.genre === genre && story.isPublic)
-      .sort((a, b) => b.views - a.views)
+      .sort((a, b) => (b.views || 0) - (a.views || 0))
       .slice(0, limit);
   }
   
@@ -141,6 +226,7 @@ export class MemStorage implements IStorage {
     const story: Story = {
       ...insertStory,
       id,
+      isPremium: insertStory.isPremium || false,
       createdAt: now,
       views: 0,
       rating: 0
@@ -170,7 +256,7 @@ export class MemStorage implements IStorage {
       return false;
     }
     
-    const updatedStory = { ...story, views: story.views + 1 };
+    const updatedStory = { ...story, views: (story.views || 0) + 1 };
     this.stories.set(id, updatedStory);
     return true;
   }
@@ -181,6 +267,181 @@ export class MemStorage implements IStorage {
   
   async getAllThemes(): Promise<Theme[]> {
     return this.themesList;
+  }
+  
+  // Subscription plan methods
+  async getAllSubscriptionPlans(): Promise<SubscriptionPlan[]> {
+    return Array.from(this.subscriptionPlansList.values()).filter(plan => plan.isActive);
+  }
+
+  async getSubscriptionPlan(id: number): Promise<SubscriptionPlan | undefined> {
+    return this.subscriptionPlansList.get(id);
+  }
+
+  async createSubscriptionPlan(plan: InsertSubscriptionPlan): Promise<SubscriptionPlan> {
+    const id = this.planIdCounter++;
+    const now = new Date();
+    
+    const newPlan: SubscriptionPlan = {
+      ...plan,
+      id,
+      createdAt: now,
+      updatedAt: now
+    };
+    
+    this.subscriptionPlansList.set(id, newPlan);
+    return newPlan;
+  }
+
+  async updateSubscriptionPlan(id: number, plan: Partial<InsertSubscriptionPlan>): Promise<SubscriptionPlan | undefined> {
+    const existingPlan = this.subscriptionPlansList.get(id);
+    if (!existingPlan) {
+      return undefined;
+    }
+    
+    const updatedPlan = { 
+      ...existingPlan, 
+      ...plan, 
+      updatedAt: new Date() 
+    };
+    
+    this.subscriptionPlansList.set(id, updatedPlan);
+    return updatedPlan;
+  }
+
+  async deleteSubscriptionPlan(id: number): Promise<boolean> {
+    const plan = this.subscriptionPlansList.get(id);
+    if (!plan) {
+      return false;
+    }
+    
+    const updatedPlan = { ...plan, isActive: false, updatedAt: new Date() };
+    this.subscriptionPlansList.set(id, updatedPlan);
+    return true;
+  }
+  
+  // User subscription methods
+  async getUserSubscription(userId: number): Promise<Subscription | undefined> {
+    const subscriptions = Array.from(this.subscriptionsList.values())
+      .filter(sub => sub.userId === userId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    
+    return subscriptions.length > 0 ? subscriptions[0] : undefined;
+  }
+
+  async getActiveUserSubscription(userId: number): Promise<Subscription | undefined> {
+    const today = new Date();
+    
+    const activeSubscriptions = Array.from(this.subscriptionsList.values())
+      .filter(sub => 
+        sub.userId === userId && 
+        sub.status === "active" && 
+        new Date(sub.endDate) >= today
+      )
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    
+    return activeSubscriptions.length > 0 ? activeSubscriptions[0] : undefined;
+  }
+
+  async createSubscription(subscription: InsertSubscription): Promise<Subscription> {
+    const id = this.subscriptionIdCounter++;
+    const now = new Date();
+    
+    const newSubscription: Subscription = {
+      ...subscription,
+      id,
+      createdAt: now,
+      updatedAt: now
+    };
+    
+    this.subscriptionsList.set(id, newSubscription);
+    
+    // Update user premium status
+    const user = this.users.get(subscription.userId);
+    if (user) {
+      this.users.set(user.id, { ...user, isPremium: true, updatedAt: now });
+    }
+    
+    return newSubscription;
+  }
+
+  async updateSubscription(id: number, subscription: Partial<InsertSubscription>): Promise<Subscription | undefined> {
+    const existingSubscription = this.subscriptionsList.get(id);
+    if (!existingSubscription) {
+      return undefined;
+    }
+    
+    const updatedSubscription = { 
+      ...existingSubscription, 
+      ...subscription, 
+      updatedAt: new Date() 
+    };
+    
+    this.subscriptionsList.set(id, updatedSubscription);
+    return updatedSubscription;
+  }
+
+  async cancelSubscription(id: number): Promise<Subscription | undefined> {
+    const subscription = this.subscriptionsList.get(id);
+    if (!subscription) {
+      return undefined;
+    }
+    
+    const canceledSubscription = { 
+      ...subscription, 
+      status: "cancelled", 
+      autoRenew: false,
+      updatedAt: new Date() 
+    };
+    
+    this.subscriptionsList.set(id, canceledSubscription);
+    
+    // Check if user has other active subscriptions
+    const today = new Date();
+    const activeSubscriptions = Array.from(this.subscriptionsList.values())
+      .filter(sub => 
+        sub.userId === subscription.userId && 
+        sub.id !== id && 
+        sub.status === "active" && 
+        new Date(sub.endDate) >= today
+      );
+    
+    // If no other active subscriptions, update user premium status
+    if (activeSubscriptions.length === 0) {
+      const user = this.users.get(subscription.userId);
+      if (user) {
+        this.users.set(user.id, { ...user, isPremium: false, updatedAt: new Date() });
+      }
+    }
+    
+    return canceledSubscription;
+  }
+  
+  // Payment methods
+  async createPayment(payment: InsertPayment): Promise<Payment> {
+    const id = this.paymentIdCounter++;
+    const now = new Date();
+    
+    const newPayment: Payment = {
+      ...payment,
+      id,
+      createdAt: now
+    };
+    
+    this.paymentsList.set(id, newPayment);
+    return newPayment;
+  }
+
+  async getPaymentsByUser(userId: number): Promise<Payment[]> {
+    return Array.from(this.paymentsList.values())
+      .filter(payment => payment.userId === userId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async getPaymentsBySubscription(subscriptionId: number): Promise<Payment[]> {
+    return Array.from(this.paymentsList.values())
+      .filter(payment => payment.subscriptionId === subscriptionId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 }
 
@@ -201,7 +462,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db.insert(users).values(insertUser).returning();
+    const [user] = await db.insert(users).values({
+      ...insertUser,
+      isPremium: false
+    }).returning();
     return user;
   }
   
@@ -234,6 +498,17 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(stories.views))
       .limit(limit);
   }
+  
+  async getPremiumStories(limit: number = 10): Promise<Story[]> {
+    return await db.select()
+      .from(stories)
+      .where(and(
+        eq(stories.isPublic, true),
+        eq(stories.isPremium, true)
+      ))
+      .orderBy(desc(stories.views))
+      .limit(limit);
+  }
 
   async getStoriesByGenre(genre: string, limit: number = 10): Promise<Story[]> {
     return await db.select()
@@ -247,7 +522,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createStory(insertStory: InsertStory): Promise<Story> {
-    const [story] = await db.insert(stories).values(insertStory).returning();
+    const [story] = await db.insert(stories).values({
+      ...insertStory,
+      isPremium: insertStory.isPremium || false
+    }).returning();
     return story;
   }
 
@@ -279,6 +557,141 @@ export class DatabaseStorage implements IStorage {
 
   async getAllThemes(): Promise<Theme[]> {
     return await db.select().from(themes);
+  }
+  
+  // Subscription plan methods
+  async getAllSubscriptionPlans(): Promise<SubscriptionPlan[]> {
+    return await db.select().from(subscriptionPlans).where(eq(subscriptionPlans.isActive, true));
+  }
+
+  async getSubscriptionPlan(id: number): Promise<SubscriptionPlan | undefined> {
+    const [plan] = await db.select().from(subscriptionPlans).where(eq(subscriptionPlans.id, id));
+    return plan;
+  }
+
+  async createSubscriptionPlan(plan: InsertSubscriptionPlan): Promise<SubscriptionPlan> {
+    const [newPlan] = await db.insert(subscriptionPlans).values(plan).returning();
+    return newPlan;
+  }
+
+  async updateSubscriptionPlan(id: number, plan: Partial<InsertSubscriptionPlan>): Promise<SubscriptionPlan | undefined> {
+    const [updatedPlan] = await db.update(subscriptionPlans)
+      .set({ ...plan, updatedAt: new Date() })
+      .where(eq(subscriptionPlans.id, id))
+      .returning();
+    
+    return updatedPlan;
+  }
+
+  async deleteSubscriptionPlan(id: number): Promise<boolean> {
+    // Soft delete by setting isActive to false
+    const result = await db.update(subscriptionPlans)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(subscriptionPlans.id, id));
+    
+    return result !== undefined;
+  }
+  
+  // User subscription methods
+  async getUserSubscription(userId: number): Promise<Subscription | undefined> {
+    const [subscription] = await db.select()
+      .from(subscriptions)
+      .where(eq(subscriptions.userId, userId))
+      .orderBy(desc(subscriptions.createdAt))
+      .limit(1);
+    
+    return subscription;
+  }
+
+  async getActiveUserSubscription(userId: number): Promise<Subscription | undefined> {
+    const today = new Date();
+    
+    const [subscription] = await db.select()
+      .from(subscriptions)
+      .where(and(
+        eq(subscriptions.userId, userId),
+        eq(subscriptions.status, "active"),
+        gte(subscriptions.endDate, today)
+      ))
+      .orderBy(desc(subscriptions.createdAt))
+      .limit(1);
+    
+    return subscription;
+  }
+
+  async createSubscription(subscription: InsertSubscription): Promise<Subscription> {
+    const [newSubscription] = await db.insert(subscriptions).values(subscription).returning();
+    
+    // Update the user's premium status
+    await db.update(users)
+      .set({ isPremium: true, updatedAt: new Date() })
+      .where(eq(users.id, subscription.userId));
+    
+    return newSubscription;
+  }
+
+  async updateSubscription(id: number, subscription: Partial<InsertSubscription>): Promise<Subscription | undefined> {
+    const [updatedSubscription] = await db.update(subscriptions)
+      .set({ ...subscription, updatedAt: new Date() })
+      .where(eq(subscriptions.id, id))
+      .returning();
+    
+    return updatedSubscription;
+  }
+
+  async cancelSubscription(id: number): Promise<Subscription | undefined> {
+    const [subscription] = await db.select().from(subscriptions).where(eq(subscriptions.id, id));
+    
+    if (!subscription) {
+      return undefined;
+    }
+    
+    const [canceledSubscription] = await db.update(subscriptions)
+      .set({ 
+        status: "cancelled", 
+        autoRenew: false,
+        updatedAt: new Date() 
+      })
+      .where(eq(subscriptions.id, id))
+      .returning();
+    
+    // Check if user has any other active subscriptions
+    const activeSubscriptions = await db.select()
+      .from(subscriptions)
+      .where(and(
+        eq(subscriptions.userId, subscription.userId),
+        eq(subscriptions.status, "active"),
+        gte(subscriptions.endDate, new Date())
+      ));
+    
+    // If no other active subscriptions, update user premium status
+    if (activeSubscriptions.length === 0) {
+      await db.update(users)
+        .set({ isPremium: false, updatedAt: new Date() })
+        .where(eq(users.id, subscription.userId));
+    }
+    
+    return canceledSubscription;
+  }
+  
+  // Payment methods
+  async createPayment(payment: InsertPayment): Promise<Payment> {
+    const [newPayment] = await db.insert(payments).values(payment).returning();
+    return newPayment;
+  }
+
+  async getPaymentsByUser(userId: number): Promise<Payment[]> {
+    return await db.select()
+      .from(payments)
+      .where(eq(payments.userId, userId))
+      .orderBy(desc(payments.createdAt));
+  }
+
+  async getPaymentsBySubscription(subscriptionId: number): Promise<Payment[]> {
+    return await db.select()
+      .from(payments)
+      .where(eq(payments.subscriptionId, subscriptionId))
+      .orderBy(desc(payments.createdAt));
   }
 }
 

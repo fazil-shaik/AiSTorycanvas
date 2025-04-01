@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, json, timestamp, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, json, timestamp, varchar, date, decimal } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -13,8 +13,45 @@ export const users = pgTable("users", {
   theme: text("theme").default("system").notNull(),
   bio: text("bio"),
   role: text("role").default("user").notNull(),
+  isPremium: boolean("is_premium").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const subscriptionPlans = pgTable("subscription_plans", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  billingCycle: text("billing_cycle").notNull(), // 'monthly', 'yearly'
+  features: json("features").$type<string[]>().default([]),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const subscriptions = pgTable("subscriptions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  planId: integer("plan_id").notNull().references(() => subscriptionPlans.id),
+  status: text("status").notNull().default("active"), // 'active', 'cancelled', 'expired'
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date").notNull(),
+  autoRenew: boolean("auto_renew").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const payments = pgTable("payments", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  subscriptionId: integer("subscription_id").references(() => subscriptions.id),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  currency: text("currency").default("USD").notNull(),
+  status: text("status").notNull(), // 'succeeded', 'pending', 'failed'
+  paymentMethod: text("payment_method").notNull(), // 'credit_card', 'paypal', etc.
+  transactionId: text("transaction_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const sessions = pgTable("sessions", {
@@ -39,6 +76,7 @@ export const stories = pgTable("stories", {
   images: json("images").$type<string[]>().default([]),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   isPublic: boolean("is_public").default(false).notNull(),
+  isPremium: boolean("is_premium").default(false).notNull(),
   rating: integer("rating").default(0),
   views: integer("views").default(0),
 });
@@ -100,3 +138,16 @@ export type Story = typeof stories.$inferSelect;
 export type StorySettings = z.infer<typeof storySettingsSchema>;
 export type Genre = typeof genres.$inferSelect;
 export type Theme = typeof themes.$inferSelect;
+
+// Subscription related types
+export const insertSubscriptionPlanSchema = createInsertSchema(subscriptionPlans);
+export type SubscriptionPlan = typeof subscriptionPlans.$inferSelect;
+export type InsertSubscriptionPlan = z.infer<typeof insertSubscriptionPlanSchema>;
+
+export const insertSubscriptionSchema = createInsertSchema(subscriptions);
+export type Subscription = typeof subscriptions.$inferSelect;
+export type InsertSubscription = z.infer<typeof insertSubscriptionSchema>;
+
+export const insertPaymentSchema = createInsertSchema(payments);
+export type Payment = typeof payments.$inferSelect;
+export type InsertPayment = z.infer<typeof insertPaymentSchema>;

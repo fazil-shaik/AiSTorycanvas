@@ -93,34 +93,59 @@ function StoryCard({
         </p>
       </CardContent>
       <CardFooter className="pt-2">
-        <div className="flex justify-between w-full">
-          <Button 
-            variant="default" 
-            className="text-xs h-8" 
-            onClick={() => navigate(`/stories/${id}`)}
-          >
-            Read
-          </Button>
-          <div className="flex gap-2">
-            {handleEdit && (
-              <Button 
-                variant="outline" 
-                className="text-xs h-8" 
-                onClick={handleEdit}
-              >
-                Edit
-              </Button>
-            )}
-            {handleDelete && (
-              <Button 
-                variant="destructive" 
-                className="text-xs h-8" 
-                onClick={handleDelete}
-              >
-                Delete
-              </Button>
-            )}
+        <div className="flex flex-col w-full space-y-3">
+          <div className="flex justify-between w-full">
+            <Button 
+              variant="default" 
+              className="text-xs h-8" 
+              onClick={() => navigate(`/story/${id}`)}
+            >
+              Read
+            </Button>
+            <div className="flex gap-2">
+              {handleEdit && (
+                <Button 
+                  variant="outline" 
+                  className="text-xs h-8" 
+                  onClick={handleEdit}
+                >
+                  Edit
+                </Button>
+              )}
+              {handleDelete && (
+                <Button 
+                  variant="destructive" 
+                  className="text-xs h-8" 
+                  onClick={handleDelete}
+                >
+                  Delete
+                </Button>
+              )}
+            </div>
           </div>
+          
+          {isPublic && (
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Share this story</span>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => {
+                    const url = `${window.location.origin}/story/${id}`;
+                    navigator.clipboard.writeText(url);
+                    toast({
+                      title: "Link copied",
+                      description: "Story link has been copied to clipboard",
+                    });
+                  }}
+                >
+                  Copy Link
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </CardFooter>
     </Card>

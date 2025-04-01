@@ -124,15 +124,28 @@ function StoryCardSkeleton() {
 export default function StoryGallery() {
   const [activeGenre, setActiveGenre] = useState("All");
   
+  // Fetch all users to get usernames
+  const { data: users } = useQuery({
+    queryKey: ['/api/users'],
+  });
+
+  // Fetch public stories
   const { data: stories, isLoading } = useQuery({
     queryKey: ['/api/stories', activeGenre !== 'All' ? activeGenre : undefined],
     select: (data) => {
+      // Filter for published stories only
+      const publishedStories = data.filter(story => story.isPublic);
+      
       // Add some additional fields for display purposes
-      return data.map(story => ({
-        ...story,
-        username: "AI Storyteller", // Placeholder
-        readingTime: `${Math.ceil(story.content.length / 1000)} min read`
-      }));
+      return publishedStories.map(story => {
+        // Find username for the story's user ID
+        const author = users?.find(user => user.id === story.userId);
+        return {
+          ...story,
+          username: author?.username || "AI Storyteller",
+          readingTime: `${Math.ceil(story.content.length / 1000)} min read`
+        };
+      });
     }
   });
 

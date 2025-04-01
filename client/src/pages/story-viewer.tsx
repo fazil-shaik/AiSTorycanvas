@@ -1,14 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRoute, useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { Story } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { AudioPlayer } from "@/components/ui/audio-player";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
-import { ChevronLeft, Share2, Save, Volume2 } from "lucide-react";
+import { ChevronLeft, Share2, Save, Volume2, Play, Pause, VolumeX, Copy, CheckCheck } from "lucide-react";
 import { generateSpeech } from "@/lib/openai";
 import { useToast } from "@/hooks/use-toast";
+import { Card, CardContent } from "@/components/ui/card";
 
 function StoryHeader({ title, genre }: { title: string; genre: string }) {
   return (
@@ -55,12 +57,32 @@ export default function StoryViewer() {
   const [match, params] = useRoute<{ id: string }>("/story/:id");
   const [readingProgress, setReadingProgress] = useState(0);
   const [audioSrc, setAudioSrc] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
+  const [audioProgress, setAudioProgress] = useState(0);
+  const [showCopiedMessage, setShowCopiedMessage] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const { toast } = useToast();
+  
+  // Increment the view count when the story is viewed
+  const incrementViewsMutation = useMutation({
+    mutationFn: async (storyId: number) => {
+      return await apiRequest("POST", `/api/stories/${storyId}/view-count`);
+    }
+  });
   
   const { data: story, isLoading, error } = useQuery<Story>({
     queryKey: [`/api/stories/${params?.id}`],
-    enabled: !!params?.id,
+    enabled: !!params?.id
   });
+  
+  // Use an effect to increment the view count once the story is loaded
+  useEffect(() => {
+    if (story?.id) {
+      incrementViewsMutation.mutate(story.id);
+    }
+  }, [story?.id]);
   
   useEffect(() => {
     const handleScroll = () => {
@@ -79,21 +101,88 @@ export default function StoryViewer() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
   
+  // Set up the audio element reference
+  useEffect(() => {
+    if (audioSrc && audioRef.current) {
+      audioRef.current.onended = () => {
+        setIsPlaying(false);
+      };
+      
+      audioRef.current.ontimeupdate = () => {
+        if (audioRef.current) {
+          const progress = (audioRef.current.currentTime / audioRef.current.duration) * 100;
+          setAudioProgress(progress);
+        }
+      };
+    }
+  }, [audioSrc]);
+  
   const handleGenerateSpeech = async () => {
     if (!story) return;
     
     try {
-      // Generate audio for first few paragraphs
-      const firstParagraphs = story.content.split("\n\n").slice(0, 3).join("\n\n");
-      const audio = await generateSpeech(firstParagraphs);
+      setIsGeneratingAudio(true);
+      
+      // Generate audio for the first five paragraphs for a better experience
+      const contentToRead = story.content.split("\n\n").slice(0, 5).join("\n\n");
+      
+      const audio = await generateSpeech(contentToRead);
       setAudioSrc(audio);
+      setIsPlaying(true);
+      
+      // Auto-play the audio
+      setTimeout(() => {
+        if (audioRef.current) {
+          audioRef.current.play().catch(e => console.error("Auto-play failed:", e));
+        }
+      }, 100);
     } catch (error: any) {
       toast({
         title: "Error",
         description: `Failed to generate speech: ${error?.message || 'Unknown error'}`,
         variant: "destructive",
       });
+    } finally {
+      setIsGeneratingAudio(false);
     }
+  };
+  
+  const handlePlayPause = () => {
+    if (!audioSrc) {
+      handleGenerateSpeech();
+      return;
+    }
+    
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause();
+      } else {
+        audioRef.current.play().catch(e => console.error("Play failed:", e));
+      }
+      setIsPlaying(!isPlaying);
+    }
+  };
+  
+  const handleMuteToggle = () => {
+    if (audioRef.current) {
+      audioRef.current.muted = !audioRef.current.muted;
+      setIsMuted(!isMuted);
+    }
+  };
+  
+  const handleCopyLink = () => {
+    if (!story) return;
+    
+    const url = `${window.location.origin}/story/${story.id}`;
+    navigator.clipboard.writeText(url);
+    
+    setShowCopiedMessage(true);
+    setTimeout(() => setShowCopiedMessage(false), 2000);
+    
+    toast({
+      title: "Link copied!",
+      description: "Story link has been copied to clipboard",
+    });
   };
   
   if (isLoading) {
@@ -161,37 +250,87 @@ export default function StoryViewer() {
               <Button 
                 variant="outline" 
                 size="sm"
-                className="bg-white/10 hover:bg-white/20"
-                onClick={handleGenerateSpeech}
+                className={`${isGeneratingAudio ? 'opacity-50 cursor-not-allowed' : 'bg-white/10 hover:bg-white/20'}`}
+                onClick={handlePlayPause}
+                disabled={isGeneratingAudio}
               >
-                <Volume2 className="mr-2 h-4 w-4" />
-                Listen
+                {isGeneratingAudio ? (
+                  <>
+                    <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    {isPlaying ? <Pause className="mr-2 h-4 w-4" /> : <Volume2 className="mr-2 h-4 w-4" />}
+                    {isPlaying ? "Pause" : "Listen"}
+                  </>
+                )}
               </Button>
               
               <Button 
                 variant="outline" 
                 size="sm"
                 className="bg-white/10 hover:bg-white/20"
+                onClick={handleCopyLink}
               >
-                <Save className="mr-2 h-4 w-4" />
-                Save
-              </Button>
-              
-              <Button 
-                variant="outline" 
-                size="sm"
-                className="bg-white/10 hover:bg-white/20"
-              >
-                <Share2 className="mr-2 h-4 w-4" />
-                Share
+                {showCopiedMessage ? (
+                  <>
+                    <CheckCheck className="mr-2 h-4 w-4" />
+                    Copied!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="mr-2 h-4 w-4" />
+                    Copy Link
+                  </>
+                )}
               </Button>
             </div>
           </div>
           
+          {/* Audio player with ref */}
           {audioSrc && (
-            <div className="mb-8">
-              <AudioPlayer audioSrc={audioSrc} />
-            </div>
+            <Card className="bg-primary/10 border-primary/20 mb-8 overflow-hidden">
+              <CardContent className="p-4">
+                <div className="flex flex-col">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-lg font-medium">AI Voice Narration</h3>
+                    <Button 
+                      variant="ghost" 
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={handleMuteToggle}
+                    >
+                      {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                  
+                  <Progress 
+                    value={audioProgress} 
+                    className="h-2 mb-3" 
+                  />
+                  
+                  <div className="flex justify-between items-center">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs"
+                      onClick={handlePlayPause}
+                    >
+                      {isPlaying ? "Pause" : "Play"}
+                    </Button>
+                    <span className="text-xs text-muted-foreground">AI-powered voice narration</span>
+                  </div>
+                  
+                  <audio 
+                    ref={audioRef}
+                    src={audioSrc} 
+                    className="hidden"
+                    controls={false}
+                  />
+                </div>
+              </CardContent>
+            </Card>
           )}
           
           <StoryContent content={story.content} />

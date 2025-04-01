@@ -1,9 +1,10 @@
-import type { Express, Request, Response } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertStorySchema, insertUserSchema, storySettingsSchema } from "@shared/schema";
+import { insertStorySchema, insertUserSchema, storySettingsSchema, loginSchema, updateThemeSchema } from "@shared/schema";
 import OpenAI from "openai";
 import { z } from "zod";
+import { hashPassword, comparePassword, generateToken, createSession, deleteSession, authMiddleware } from "./utils/auth";
 
 // Initialize OpenAI client
 const openai = new OpenAI({ 
@@ -11,7 +12,185 @@ const openai = new OpenAI({
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // User routes
+  // Authentication routes
+  app.post("/api/auth/register", async (req: Request, res: Response) => {
+    try {
+      const userData = insertUserSchema.parse(req.body);
+      
+      // Check if user already exists
+      const existingUser = await storage.getUserByUsername(userData.username);
+      if (existingUser) {
+        return res.status(409).json({
+          message: "Username already exists"
+        });
+      }
+      
+      // Hash password
+      const hashedPassword = await hashPassword(userData.password);
+      
+      // Create user with hashed password
+      const user = await storage.createUser({
+        ...userData,
+        password: hashedPassword
+      });
+      
+      // Generate token
+      const token = generateToken(user);
+      
+      // Create session
+      await createSession(user.id, token);
+      
+      // Set cookie
+      res.cookie('token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+      });
+      
+      return res.status(201).json({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        theme: user.theme,
+        role: user.role
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          message: "Invalid registration data",
+          errors: error.errors
+        });
+      }
+      console.error("Registration error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  app.post("/api/auth/login", async (req: Request, res: Response) => {
+    try {
+      const loginData = loginSchema.parse(req.body);
+      
+      // Find user by email
+      const user = await storage.getUserByEmail(loginData.email);
+      if (!user) {
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+      
+      // Verify password
+      const isPasswordValid = await comparePassword(loginData.password, user.password);
+      if (!isPasswordValid) {
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+      
+      // Generate token
+      const token = generateToken(user);
+      
+      // Create session
+      await createSession(user.id, token);
+      
+      // Set cookie
+      res.cookie('token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+      });
+      
+      return res.json({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        theme: user.theme,
+        role: user.role
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          message: "Invalid login data",
+          errors: error.errors
+        });
+      }
+      console.error("Login error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  app.post("/api/auth/logout", async (req: Request, res: Response) => {
+    const token = req.cookies.token;
+    
+    if (token) {
+      // Delete session
+      await deleteSession(token);
+      
+      // Clear cookie
+      res.clearCookie('token');
+    }
+    
+    return res.status(200).json({ message: "Logged out successfully" });
+  });
+  
+  app.get("/api/auth/me", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      return res.json({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        theme: user.theme,
+        role: user.role
+      });
+    } catch (error) {
+      console.error("Auth me error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  app.put("/api/auth/theme", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      const themeData = updateThemeSchema.parse(req.body);
+      
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      const updatedUser = await storage.updateUser(userId, { theme: themeData.theme });
+      
+      return res.json({
+        theme: updatedUser.theme
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          message: "Invalid theme data",
+          errors: error.errors
+        });
+      }
+      console.error("Update theme error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  // User routes (legacy)
   app.post("/api/users", async (req: Request, res: Response) => {
     try {
       const userData = insertUserSchema.parse(req.body);

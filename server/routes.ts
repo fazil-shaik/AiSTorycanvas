@@ -14,6 +14,8 @@ import {
 import OpenAI from "openai";
 import { z } from "zod";
 import { hashPassword, comparePassword, generateToken, createSession, deleteSession, authMiddleware } from "./utils/auth";
+import dotenv from 'dotenv';
+dotenv.config();
 
 // Initialize OpenAI client
 const openai = new OpenAI({ 

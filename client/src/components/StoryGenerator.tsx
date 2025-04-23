@@ -45,11 +45,11 @@ export default function StoryGenerator({ onComplete }: StoryGeneratorProps) {
   const [isPublic, setIsPublic] = useState(false);
   const { toast } = useToast();
 
-  const { data: genres } = useQuery({ 
+  const { data: genres } = useQuery<{ id: string; name: string }[]>({ 
     queryKey: ['/api/genres'],
   });
 
-  const { data: themes } = useQuery({ 
+  const { data: themes } = useQuery<{ id: string; name: string }[]>({ 
     queryKey: ['/api/themes'],
   });
 
@@ -170,18 +170,18 @@ export default function StoryGenerator({ onComplete }: StoryGeneratorProps) {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent className="bg-dark border-white/20">
-                            {genres?.map((genre) => (
+                            {genres?.map((genre: { id: string; name: string }) => (
                               <SelectItem key={genre.id} value={genre.name}>
-                                {genre.name}
+                              {genre.name}
                               </SelectItem>
                             )) || (
                               <>
-                                <SelectItem value="Fantasy">Fantasy</SelectItem>
-                                <SelectItem value="Science Fiction">Science Fiction</SelectItem>
-                                <SelectItem value="Mystery">Mystery</SelectItem>
-                                <SelectItem value="Adventure">Adventure</SelectItem>
-                                <SelectItem value="Romance">Romance</SelectItem>
-                                <SelectItem value="Horror">Horror</SelectItem>
+                              <SelectItem value="Fantasy">Fantasy</SelectItem>
+                              <SelectItem value="Science Fiction">Science Fiction</SelectItem>
+                              <SelectItem value="Mystery">Mystery</SelectItem>
+                              <SelectItem value="Adventure">Adventure</SelectItem>
+                              <SelectItem value="Romance">Romance</SelectItem>
+                              <SelectItem value="Horror">Horror</SelectItem>
                               </>
                             )}
                           </SelectContent>

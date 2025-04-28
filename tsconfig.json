@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2020",
     "module": "ESNext",
-    "moduleResolution": "Node",
+    "moduleResolution": "node",
     "outDir": "dist",
     "rootDir": ".",
     "strict": true,
@@ -11,8 +11,10 @@
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
     "forceConsistentCasingInFileNames": true,
-    "incremental": true
+    "incremental": true,
+    "declaration": true,     // Optional: generate .d.ts files
+    "sourceMap": false        // Optional: you can disable sourcemaps for smaller build
   },
-  "include": ["api", "client", "server", "shared"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["api", "server", "shared"],
+  "exclude": ["node_modules", "dist", "client"]
 }

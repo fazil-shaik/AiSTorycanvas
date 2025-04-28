@@ -1,11 +1,12 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { Request, Response, NextFunction } from 'express';
-import { User, Session } from '@shared/schema';
+import { User, Session } from '../../../shared/schema';
 import { db } from '../db';
-import { sessions, users } from '@shared/schema';
+import { sessions, users } from '../../../shared/schema';
 import { eq } from 'drizzle-orm';
-
+import dotenv from 'dotenv';
+dotenv.config();
 // Environment variables
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret'; // In production, use a secure environment variable
 const SALT_ROUNDS = 10;

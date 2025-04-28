@@ -10,7 +10,7 @@ import {
   insertSubscriptionPlanSchema,
   insertSubscriptionSchema,
   insertPaymentSchema
-} from "@shared/schema";
+} from "../../shared/schema";
 import OpenAI from "openai";
 import { z } from "zod";
 import { hashPassword, comparePassword, generateToken, createSession, deleteSession, authMiddleware } from "./utils/auth";

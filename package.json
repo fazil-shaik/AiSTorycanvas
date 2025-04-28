@@ -5,7 +5,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "concurrently \"vite\" \"ts-node server/index.ts\"",
-  "build": "cd client && npm install && npm run build",
+    "build": "cd client && npm install --omit=dev && npm run build",
   "start": "serve -s client/dist",
     "check": "tsc",
     "db:push": "drizzle-kit push"
